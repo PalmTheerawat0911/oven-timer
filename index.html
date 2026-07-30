@@ -52,31 +52,62 @@
 
 <script>
     // * นำ URL Google Apps Script ของคุณมาวางตรงนี้ *
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxzjfbvnMbQatpOBtRURtc-Ety6SCBO29-GL4iqb-sxDAvNm1EykMi-bM1U-0GTjLMgcQ/exec"; 
+    const WEB_APP_URL = "วาง_WEB_APP_URL_ของคุณที่นี่"; 
 
     let timerInterval = null;
+    let alarmInterval = null; // ตัวควบคุมเสียงเตือนวนซ้ำ
+    let audioCtx = null;
     let secondsLeft = 600; // 10 นาที
     let totalSecondsElapsed = 0;
     let isRunning = false;
 
-    // ระบบสร้างเสียงเตือน (Beep Sound) ผ่าน Web Audio API
-    function playBeepSound() {
+    // ระบบเล่นเสียงปี๊บวนซ้ำ (จะดังต่อเนื่องจนกว่าจะสั่งหยุด)
+    function startContinuousAlarm() {
+        stopContinuousAlarm(); // เคลียร์เสียงเก่าถ้ามี
+        
         try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime); // ความถี่เสียง 880Hz (เสียงปี๊บสูง)
-            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-            
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            
-            osc.start();
-            osc.stop(audioCtx.currentTime + 1.5); // ดังยาว 1.5 วินาที
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            // ฟังก์ชันสร้างเสียงปี๊บ 1 ครั้ง
+            function playBeep() {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(900, audioCtx.currentTime); // เสียงสูง 900Hz
+                gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+                
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4); // ดัง 0.4 วินาที
+            }
+
+            // เล่นเสียงครั้งแรกทันที
+            playBeep();
+
+            // ให้เสียงปี๊บดังซ้ำทุกๆ 0.8 วินาที (และสั่นวนไป)
+            alarmInterval = setInterval(() => {
+                playBeep();
+                if (navigator.vibrate) navigator.vibrate(300); // สั่น 0.3 วินาที
+            }, 800);
+
         } catch(e) {
-            console.log("Audio not supported");
+            console.log("Audio Alarm Error:", e);
+        }
+    }
+
+    // ฟังก์ชันหยุดเสียงเตือน
+    function stopContinuousAlarm() {
+        if (alarmInterval) {
+            clearInterval(alarmInterval);
+            alarmInterval = null;
         }
     }
 
@@ -89,7 +120,6 @@
         const status = document.getElementById('status-text');
 
         if (!isRunning) {
-            // เช็กการกรอกข้อมูล
             if (!plasticInput.value.trim()) {
                 alert("กรุณากรอกชนิดพลาสติกก่อนครับ");
                 plasticInput.focus();
@@ -106,26 +136,28 @@
                 return;
             }
 
-            // เริ่มเดินเตา
+            // สร้าง AudioContext ไว้ล่วงหน้าทันทีที่กดปุ่มเริ่มเดินเตา (เพื่อผ่านระบบความปลอดภัยเบราว์เซอร์)
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
             isRunning = true;
             btnStart.innerText = "⏹ หยุดเดินเตา";
             btnStart.style.backgroundColor = "#d9534f";
             
-            // ล็อกตัวเลือกไม่ให้แก้ขณะเดินเตา
             plasticInput.disabled = true;
             rangeSelect.disabled = true;
             
             btnSend.disabled = false;
             btnSend.style.opacity = "1";
 
-            // บันทึกค่านาทีที่ 0 ทันที
             sendData();
-
             startTimer();
         } else {
-            // หยุดเดินเตา
             isRunning = false;
             clearInterval(timerInterval);
+            stopContinuousAlarm();
+
             btnStart.innerText = "▶ เริ่มเดินเตาเผา";
             btnStart.style.backgroundColor = "#5cb85c";
             
@@ -152,12 +184,16 @@
                 secondsLeft--;
                 updateTimerDisplay();
             } else {
-                // ครบ 10 นาที
-                playBeepSound(); // ส่งเสียงเตือน
-                if (navigator.vibrate) navigator.vibrate([500, 200, 500]); // สั่นเครื่อง Zebra
+                // ครบ 10 นาที ➔ เปิดเสียงเตือนดังต่อเนื่อง
+                startContinuousAlarm();
                 
-                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก");
-                secondsLeft = 600; // รีเซ็ตรอบใหม่
+                // Alert จะหยุดการทำงานของโค้ดไว้ จนกว่าผู้ใช้จะกด "ตกลง"
+                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบัน แล้วกดบันทึก");
+                
+                // พอกด "ตกลง" ปุ๊บ ให้หยุดเสียงเตือนทันที
+                stopContinuousAlarm();
+                
+                secondsLeft = 600; // รีเซ็ตนับถอยหลังรอบใหม่
             }
         }, 1000);
     }
@@ -181,6 +217,9 @@
             alert("กรุณากรอกอุณหภูมิก่อนบันทึกครับ");
             return;
         }
+
+        // หากยังมีเสียงเตือนค้างอยู่ ให้ปิดเสียงเมื่อกดบันทึก
+        stopContinuousAlarm();
 
         status.innerText = "กำลังส่งข้อมูล...";
         status.style.color = "orange";
@@ -221,6 +260,3 @@
 
 </body>
 </html>
-ส่งแล้ว
-เขียนข้อความ
-เขียนถึง Sarinya Changnam

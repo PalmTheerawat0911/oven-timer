@@ -6,6 +6,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>บันทึกอุณหภูมิเตาเผา</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0275d8">
     <style>
         body { font-family: sans-serif; padding: 15px; text-align: center; background-color: #f4f4f9; }
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
@@ -17,6 +19,41 @@
         .btn-start { background-color: #5cb85c; color: white; width: 90%; margin-bottom: 10px; }
         .btn-send { background-color: #0275d8; color: white; width: 90%; }
         .status { margin-top: 15px; font-weight: bold; font-size: 14px; }
+
+        /* Custom Modal Pop-up แบบเด้งคลุมหน้าจอ (ไม่โดน Chrome บล็อก) */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            width: 80%;
+            max-width: 320px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            animation: bounce 0.3s ease-in-out;
+        }
+        .modal-btn {
+            background-color: #d9534f;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            margin-top: 15px;
+            width: 100%;
+        }
+        @keyframes bounce {
+            0% { transform: scale(0.7); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -50,52 +87,72 @@
     <div class="status" id="status-text">กรอกข้อมูลให้ครบ แล้วกด "เริ่มเดินเตาเผา"</div>
 </div>
 
+<!-- Pop-up แจ้งเตือนสไตล์แอปแท้ -->
+<div class="modal-overlay" id="alertModal">
+    <div class="modal-content">
+        <h1 style="color: #d9534f; margin-top: 0;">⏰ ครบ 10 นาที!</h1>
+        <p style="font-size: 18px; color: #333;">กรุณากรอกอุณหภูมิเตาเผาปัจจุบัน แล้วกดบันทึกข้อมูล</p>
+        <button class="modal-btn" onclick="dismissAlarm()">รับทราบ (ปิดเสียงเตือน)</button>
+    </div>
+</div>
+
 <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
 
 <script>
-    // * นำ URL Google Apps Script ของคุณมาวางตรงนี้ *
+    // * วาง URL Web App ของ Google Apps Script ที่ได้จากการ Deploy ล่าสุด *
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx8PUUO0O6rBcwioxX1fzvUeaUhvtYx8UGV9jvf9cuk-hAyWz9eZhINVhX3pVVLlxBQSQ/exec"; 
 
     let timerInterval = null;
     let alarmInterval = null;
     let audioCtx = null;
     let isRunning = false;
-    let lastAlertCycle = -1; // ป้องกันการเด้งเตือนซ้ำในรอบเดิม
+    let lastAlertCycle = -1;
 
     window.addEventListener('load', () => {
         checkAndRestoreState();
-        // ขออนุญาตส่ง Notification ตั้งแต่เปิดหน้าเว็บ
         if ("Notification" in window && Notification.permission !== "granted") {
             Notification.requestPermission();
         }
     });
 
+    // ปลุก AudioContext ให้พร้อมใช้งานเมื่อกดเริ่มเดินเตา
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
     function playBeep() {
         try {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            
+            initAudio();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(900, audioCtx.currentTime);
-            gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+            osc.type = 'sawtooth'; // เปลี่ยนโทนเสียงให้ดังและแหลมชัดเจนยิ่งขึ้น
+            osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.9, audioCtx.currentTime);
             
             osc.connect(gain);
             gain.connect(audioCtx.destination);
             
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.4);
+            osc.stop(audioCtx.currentTime + 0.3);
         } catch(e) {}
     }
 
     function startContinuousAlarm() {
         stopContinuousAlarm();
         playBeep();
+        
+        // สั่งสั่นเครื่อง Zebra วนซ้ำ
+        if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]);
+
         alarmInterval = setInterval(() => {
             playBeep();
-            if (navigator.vibrate) navigator.vibrate(300);
+            if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200]);
         }, 800);
     }
 
@@ -106,15 +163,27 @@
         }
     }
 
-    // ฟังก์ชันส่ง Notification ไปที่แถบการแจ้งเตือนของ Android
-    function sendPushNotification() {
+    function triggerAlarmUI() {
+        // 1. เด้ง Pop-up Custom Modal
+        document.getElementById('alertModal').style.display = 'flex';
+        
+        // 2. ส่งเสียงปี๊บและสั่นเครื่องวนซ้ำ
+        startContinuousAlarm();
+
+        // 3. ยิง Push Notification เข้าแถบ Android
         if ("Notification" in window && Notification.permission === "granted") {
             new Notification("⏰ ครบ 10 นาทีแล้ว!", {
                 body: "ได้เวลาบันทึกอุณหภูมิเตาเผาแล้วครับ",
                 icon: "https://cdn-icons-png.flaticon.com/512/1684/1684373.png",
-                vibrate: [500, 200, 500]
+                requireInteraction: true
             });
         }
+    }
+
+    function dismissAlarm() {
+        document.getElementById('alertModal').style.display = 'none';
+        stopContinuousAlarm();
+        document.getElementById('temp-input').focus(); // โฟกัสช่องกรอกอุณหภูมิให้อัตโนมัติ
     }
 
     function toggleOven() {
@@ -127,7 +196,9 @@
             if (!rangeSelect.value) { alert("กรุณาเลือกย่านอุณหภูมิก่อนครับ"); rangeSelect.focus(); return; }
             if (!tempInput.value) { alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนครับ"); tempInput.focus(); return; }
 
-            // ขออนุญาตส่งการแจ้งเตือน
+            // ปลุกระบบเสียงทันทีเมื่อสัมผัสปุ่ม
+            initAudio();
+
             if ("Notification" in window && Notification.permission !== "granted") {
                 Notification.requestPermission();
             }
@@ -171,7 +242,7 @@
         btnSend.style.opacity = "1";
     }
 
-function runTimerLoop() {
+    function runTimerLoop() {
         if (timerInterval) clearInterval(timerInterval);
 
         timerInterval = setInterval(() => {
@@ -189,31 +260,10 @@ function runTimerLoop() {
 
             const currentCycle = Math.floor(totalSecondsElapsed / 600);
 
-            // เมื่อครบ 10 นาที (00:00)
+            // เมื่อครบ 10 นาที
             if (secondsInCurrentCycle === 0 && totalSecondsElapsed > 0 && currentCycle !== lastAlertCycle) {
                 lastAlertCycle = currentCycle;
-
-                // 1. ส่ง Notification ของ Android (เด้งขึ้นหน้าจอแน่นอนแม้ไม่ได้แตะจอ)
-                if ("Notification" in window && Notification.permission === "granted") {
-                    var notify = new Notification("⏰ ครบ 10 นาทีแล้ว!", {
-                        body: "กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก",
-                        icon: "https://cdn-icons-png.flaticon.com/512/1684/1684373.png",
-                        requireInteraction: true // ให้การแจ้งเตือนค้างไว้จนกว่าจะกดปิด
-                    });
-                }
-
-                // 2. สั่งสั่นเครื่อง Zebra นาน 2 วินาที
-                if (navigator.vibrate) {
-                    navigator.vibrate([1000, 500, 1000]);
-                }
-
-                // 3. เล่นเสียงปี๊บเตือน
-                startContinuousAlarm();
-                
-                // เปลี่ยนข้อความแถบสถานะเป็นสีแดงเตือนบนหน้าจอ
-                const status = document.getElementById('status-text');
-                status.innerText = "⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิ";
-                status.style.color = "red";
+                triggerAlarmUI(); // สั่งทำงาน Pop-up และระบบเสียง
             }
         }, 1000);
     }
@@ -269,7 +319,7 @@ function runTimerLoop() {
             return;
         }
 
-        stopContinuousAlarm();
+        dismissAlarm(); // หยุดเสียงเตือนทันทีเมื่อบันทึกข้อมูล
         status.innerText = "กำลังส่งข้อมูล...";
         status.style.color = "orange";
 

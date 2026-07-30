@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>บันทึกอุณหภูมิเตาเผา</title>
+    <style>
+        body { font-family: sans-serif; padding: 15px; text-align: center; background-color: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; }
+        .timer-box { font-size: 36px; font-weight: bold; color: #d9534f; margin: 15px 0; }
+        input[type="number"] { font-size: 24px; width: 80%; padding: 10px; text-align: center; margin-bottom: 15px; border: 2px solid #ccc; border-radius: 8px; }
+        button { font-size: 18px; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-start { background-color: #5cb85c; color: white; width: 100%; margin-bottom: 10px; }
+        .btn-send { background-color: #0275d8; color: white; width: 100%; }
+        .status { margin-top: 15px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>บันทึกอุณหภูมิเตาเผา</h2>
+    <div>เวลาที่ผ่านไป: <span id="elapsed-time" style="font-weight:bold;">0</span> นาที</div>
+    
+    <div class="timer-box" id="timer">10:00</div>
+    
+    <input type="number" id="temp-input" placeholder="ใส่ อุณหภูมิ (°C)" autofocus>
+    <br>
+    <button class="btn-send" onclick="sendData()">บันทึกข้อมูล (ENTER)</button>
+    <br><br>
+    <button class="btn-start" id="start-btn" onclick="toggleOven()">▶ เริ่มเดินเตาเผา</button>
+    
+    <div class="status" id="status-text"></div>
+</div>
+
+<iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
+
+<script>
+    // * นำ URL ที่ได้จาก Google Apps Script มาวางตรงนี้ *
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbynZ7OBrhSMvTRmI4nxVvLVs1SbUqLiI7uOIRZAo9S3_4AIixvib4Z0bLBOPXF4qVs4Tw/exec"; 
+
+    let timerInterval = null;
+    let secondsLeft = 600;
+    let currentMinute = 0;
+    let isRunning = false;
+
+    function toggleOven() {
+        if (!isRunning) {
+            isRunning = true;
+            document.getElementById('start-btn').innerText = "⏹ หยุดเดินเตา";
+            document.getElementById('start-btn').style.backgroundColor = "#d9534f";
+            startTimer();
+            document.getElementById('status-text').innerText = "เริ่มบันทึกเวลารอบที่ 0 นาทีแล้ว";
+        } else {
+            isRunning = false;
+            clearInterval(timerInterval);
+            document.getElementById('start-btn').innerText = "▶ เริ่มเดินเตาเผา";
+            document.getElementById('start-btn').style.backgroundColor = "#5cb85c";
+            document.getElementById('status-text').innerText = "หยุดการทำงานเตาเผา";
+        }
+    }
+
+    function startTimer() {
+        clearInterval(timerInterval);
+        secondsLeft = 600;
+        updateTimerDisplay();
+
+        timerInterval = setInterval(() => {
+            if (secondsLeft > 0) {
+                secondsLeft--;
+                updateTimerDisplay();
+            } else {
+                currentMinute += 10;
+                document.getElementById('elapsed-time').innerText = currentMinute;
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500]);
+                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกและบันทึกอุณหภูมิ");
+                secondsLeft = 600;
+            }
+        }, 1000);
+    }
+
+    function updateTimerDisplay() {
+        let m = Math.floor(secondsLeft / 60);
+        let s = secondsLeft % 60;
+        document.getElementById('timer').innerText = 
+            ${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')};
+    }
+
+    function sendData() {
+        const temp = document.getElementById('temp-input').value;
+        if (!temp) {
+            alert("กรุณากรอกอุณหภูมิก่อนครับ");
+            return;
+        }
+
+        document.getElementById('status-text').innerText = "กำลังส่งข้อมูล...";
+        document.getElementById('status-text').style.color = "orange";
+
+        // สร้าง Form จำลองยิงเข้า Google Apps Script เพื่อหลบ CORS
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = WEB_APP_URL;
+        form.target = 'hidden_iframe';
+
+        const inputData = document.createElement('input');
+        inputData.type = 'hidden';
+        inputData.name = 'postData';
+        inputData.value = JSON.stringify({
+            time_minute: currentMinute,
+            temperature: temp
+        });
+
+        form.appendChild(inputData);
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+
+        setTimeout(() => {
+            document.getElementById('status-text').innerText = บันทึก ${temp} °C (นาทีที่ ${currentMinute}) สำเร็จ!;
+            document.getElementById('status-text').style.color = "green";
+            document.getElementById('temp-input').value = '';
+        }, 800);
+    }
+
+    document.getElementById('temp-input').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            sendData();
+        }
+    });
+</script>
+
+</body>
+</html>

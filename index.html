@@ -60,10 +60,14 @@
     let alarmInterval = null;
     let audioCtx = null;
     let isRunning = false;
+    let lastAlertCycle = -1; // ป้องกันการเด้งเตือนซ้ำในรอบเดิม
 
-    // ตรวจสอบสถานะเดิมเมื่อโหลดหน้าเว็บใหม่
     window.addEventListener('load', () => {
         checkAndRestoreState();
+        // ขออนุญาตส่ง Notification ตั้งแต่เปิดหน้าเว็บ
+        if ("Notification" in window && Notification.permission !== "granted") {
+            Notification.requestPermission();
+        }
     });
 
     function playBeep() {
@@ -102,31 +106,42 @@
         }
     }
 
+    // ฟังก์ชันส่ง Notification ไปที่แถบการแจ้งเตือนของ Android
+    function sendPushNotification() {
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("⏰ ครบ 10 นาทีแล้ว!", {
+                body: "ได้เวลาบันทึกอุณหภูมิเตาเผาแล้วครับ",
+                icon: "https://cdn-icons-png.flaticon.com/512/1684/1684373.png",
+                vibrate: [500, 200, 500]
+            });
+        }
+    }
+
     function toggleOven() {
         const plasticInput = document.getElementById('plastic-type');
         const rangeSelect = document.getElementById('temp-range');
         const tempInput = document.getElementById('temp-input');
-        const btnStart = document.getElementById('start-btn');
 
         if (!isRunning) {
             if (!plasticInput.value.trim()) { alert("กรุณากรอกชนิดพลาสติกก่อนครับ"); plasticInput.focus(); return; }
             if (!rangeSelect.value) { alert("กรุณาเลือกย่านอุณหภูมิก่อนครับ"); rangeSelect.focus(); return; }
             if (!tempInput.value) { alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนครับ"); tempInput.focus(); return; }
 
-            // เซฟเวลาเริ่มเดินเตา (Timestamp) และข้อมูลเข้าความจำเครื่อง
+            // ขออนุญาตส่งการแจ้งเตือน
+            if ("Notification" in window && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+
             const startTime = Date.now();
             localStorage.setItem('oven_start_time', startTime);
             localStorage.setItem('plastic_type', plasticInput.value.trim());
             localStorage.setItem('temp_range', rangeSelect.value);
             localStorage.setItem('is_running', 'true');
 
-            // บันทึกค่านาทีที่ 0 ทันที
             sendData();
-            
             restoreUIState();
             runTimerLoop();
         } else {
-            // กดหยุดเตาเผา ➔ ลบข้อมูลจำออก
             clearOvenState();
         }
     }
@@ -164,18 +179,24 @@
             const now = Date.now();
             const totalSecondsElapsed = Math.floor((now - startTime) / 1000);
 
-            // อัปเดตเวลาที่ผ่านไป (นาที)
             const minutesElapsed = Math.floor(totalSecondsElapsed / 60);
             document.getElementById('elapsed-time').innerText = minutesElapsed;
 
-            // คำนวณเวลานับถอยหลังรอบละ 10 นาที (600 วินาที)
             const secondsInCurrentCycle = totalSecondsElapsed % 600;
             const secondsLeft = 600 - secondsInCurrentCycle;
 
             updateTimerDisplay(secondsLeft);
 
-            // หากวนมาชนรอบ 10 นาทีพอดี (เหลือ 600 เท่ากับเริ่มรอบใหม่)
-            if (secondsInCurrentCycle === 0 && totalSecondsElapsed > 0) {
+            // คำนวณรอบปัจจุบัน (รอบที่ 1, 2, 3...)
+            const currentCycle = Math.floor(totalSecondsElapsed / 600);
+
+            // หากวนมาชนรอบ 10 นาทีพอดี และยังไม่ได้แจ้งเตือนในรอบนี้
+            if (secondsInCurrentCycle === 0 && totalSecondsElapsed > 0 && currentCycle !== lastAlertCycle) {
+                lastAlertCycle = currentCycle;
+                
+                // ยิง Notification ออกไปที่แถบด้านบนมือถือ (เห็นแน่นอนแม้พับแอปอยู่)
+                sendPushNotification();
+                
                 startContinuousAlarm();
                 alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก");
                 stopContinuousAlarm();

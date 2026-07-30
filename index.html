@@ -171,7 +171,7 @@
         btnSend.style.opacity = "1";
     }
 
-    function runTimerLoop() {
+function runTimerLoop() {
         if (timerInterval) clearInterval(timerInterval);
 
         timerInterval = setInterval(() => {
@@ -187,19 +187,33 @@
 
             updateTimerDisplay(secondsLeft);
 
-            // คำนวณรอบปัจจุบัน (รอบที่ 1, 2, 3...)
             const currentCycle = Math.floor(totalSecondsElapsed / 600);
 
-            // หากวนมาชนรอบ 10 นาทีพอดี และยังไม่ได้แจ้งเตือนในรอบนี้
+            // เมื่อครบ 10 นาที (00:00)
             if (secondsInCurrentCycle === 0 && totalSecondsElapsed > 0 && currentCycle !== lastAlertCycle) {
                 lastAlertCycle = currentCycle;
-                
-                // ยิง Notification ออกไปที่แถบด้านบนมือถือ (เห็นแน่นอนแม้พับแอปอยู่)
-                sendPushNotification();
-                
+
+                // 1. ส่ง Notification ของ Android (เด้งขึ้นหน้าจอแน่นอนแม้ไม่ได้แตะจอ)
+                if ("Notification" in window && Notification.permission === "granted") {
+                    var notify = new Notification("⏰ ครบ 10 นาทีแล้ว!", {
+                        body: "กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก",
+                        icon: "https://cdn-icons-png.flaticon.com/512/1684/1684373.png",
+                        requireInteraction: true // ให้การแจ้งเตือนค้างไว้จนกว่าจะกดปิด
+                    });
+                }
+
+                // 2. สั่งสั่นเครื่อง Zebra นาน 2 วินาที
+                if (navigator.vibrate) {
+                    navigator.vibrate([1000, 500, 1000]);
+                }
+
+                // 3. เล่นเสียงปี๊บเตือน
                 startContinuousAlarm();
-                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก");
-                stopContinuousAlarm();
+                
+                // เปลี่ยนข้อความแถบสถานะเป็นสีแดงเตือนบนหน้าจอ
+                const status = document.getElementById('status-text');
+                status.innerText = "⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิ";
+                status.style.color = "red";
             }
         }, 1000);
     }

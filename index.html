@@ -54,58 +54,47 @@
 
 <script>
     // * นำ URL Google Apps Script ของคุณมาวางตรงนี้ *
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxzjfbvnMbQatpOBtRURtc-Ety6SCBO29-GL4iqb-sxDAvNm1EykMi-bM1U-0GTjLMgcQ/exec"; 
+    const WEB_APP_URL = "วาง_WEB_APP_URL_ของคุณที่นี่"; 
 
     let timerInterval = null;
-    let alarmInterval = null; // ตัวควบคุมเสียงเตือนวนซ้ำ
+    let alarmInterval = null;
     let audioCtx = null;
-    let secondsLeft = 600; // 10 นาที
-    let totalSecondsElapsed = 0;
     let isRunning = false;
 
-    // ระบบเล่นเสียงปี๊บวนซ้ำ (จะดังต่อเนื่องจนกว่าจะสั่งหยุด)
-    function startContinuousAlarm() {
-        stopContinuousAlarm(); // เคลียร์เสียงเก่าถ้ามี
-        
+    // ตรวจสอบสถานะเดิมเมื่อโหลดหน้าเว็บใหม่
+    window.addEventListener('load', () => {
+        checkAndRestoreState();
+    });
+
+    function playBeep() {
         try {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            // ฟังก์ชันสร้างเสียงปี๊บ 1 ครั้ง
-            function playBeep() {
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume();
-                }
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(900, audioCtx.currentTime); // เสียงสูง 900Hz
-                gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
-                
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.4); // ดัง 0.4 วินาที
-            }
-
-            // เล่นเสียงครั้งแรกทันที
-            playBeep();
-
-            // ให้เสียงปี๊บดังซ้ำทุกๆ 0.8 วินาที (และสั่นวนไป)
-            alarmInterval = setInterval(() => {
-                playBeep();
-                if (navigator.vibrate) navigator.vibrate(300); // สั่น 0.3 วินาที
-            }, 800);
-
-        } catch(e) {
-            console.log("Audio Alarm Error:", e);
-        }
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(900, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.8, audioCtx.currentTime);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.4);
+        } catch(e) {}
     }
 
-    // ฟังก์ชันหยุดเสียงเตือน
+    function startContinuousAlarm() {
+        stopContinuousAlarm();
+        playBeep();
+        alarmInterval = setInterval(() => {
+            playBeep();
+            if (navigator.vibrate) navigator.vibrate(300);
+        }, 800);
+    }
+
     function stopContinuousAlarm() {
         if (alarmInterval) {
             clearInterval(alarmInterval);
@@ -118,94 +107,116 @@
         const rangeSelect = document.getElementById('temp-range');
         const tempInput = document.getElementById('temp-input');
         const btnStart = document.getElementById('start-btn');
-        const btnSend = document.getElementById('send-btn');
-        const status = document.getElementById('status-text');
 
         if (!isRunning) {
-            if (!plasticInput.value.trim()) {
-                alert("กรุณากรอกชนิดพลาสติกก่อนครับ");
-                plasticInput.focus();
-                return;
-            }
-            if (!rangeSelect.value) {
-                alert("กรุณาเลือกย่านอุณหภูมิก่อนครับ");
-                rangeSelect.focus();
-                return;
-            }
-            if (!tempInput.value) {
-                alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนครับ");
-                tempInput.focus();
-                return;
-            }
+            if (!plasticInput.value.trim()) { alert("กรุณากรอกชนิดพลาสติกก่อนครับ"); plasticInput.focus(); return; }
+            if (!rangeSelect.value) { alert("กรุณาเลือกย่านอุณหภูมิก่อนครับ"); rangeSelect.focus(); return; }
+            if (!tempInput.value) { alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนครับ"); tempInput.focus(); return; }
 
-            // สร้าง AudioContext ไว้ล่วงหน้าทันทีที่กดปุ่มเริ่มเดินเตา (เพื่อผ่านระบบความปลอดภัยเบราว์เซอร์)
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
+            // เซฟเวลาเริ่มเดินเตา (Timestamp) และข้อมูลเข้าความจำเครื่อง
+            const startTime = Date.now();
+            localStorage.setItem('oven_start_time', startTime);
+            localStorage.setItem('plastic_type', plasticInput.value.trim());
+            localStorage.setItem('temp_range', rangeSelect.value);
+            localStorage.setItem('is_running', 'true');
 
-            isRunning = true;
-            btnStart.innerText = "⏹ หยุดเดินเตา";
-            btnStart.style.backgroundColor = "#d9534f";
-            
-            plasticInput.disabled = true;
-            rangeSelect.disabled = true;
-            
-            btnSend.disabled = false;
-            btnSend.style.opacity = "1";
-
+            // บันทึกค่านาทีที่ 0 ทันที
             sendData();
-            startTimer();
+            
+            restoreUIState();
+            runTimerLoop();
         } else {
-            isRunning = false;
-            clearInterval(timerInterval);
-            stopContinuousAlarm();
-
-            btnStart.innerText = "▶ เริ่มเดินเตาเผา";
-            btnStart.style.backgroundColor = "#5cb85c";
-            
-            plasticInput.disabled = false;
-            rangeSelect.disabled = false;
-            btnSend.disabled = true;
-            btnSend.style.opacity = "0.4";
-            
-            status.innerText = "หยุดการทำงานเตาเผาแล้ว";
-            status.style.color = "black";
+            // กดหยุดเตาเผา ➔ ลบข้อมูลจำออก
+            clearOvenState();
         }
     }
 
-    function startTimer() {
-        clearInterval(timerInterval);
+    function checkAndRestoreState() {
+        const storedIsRunning = localStorage.getItem('is_running');
+        if (storedIsRunning === 'true') {
+            document.getElementById('plastic-type').value = localStorage.getItem('plastic_type') || '';
+            document.getElementById('temp-range').value = localStorage.getItem('temp_range') || '';
+            restoreUIState();
+            runTimerLoop();
+        }
+    }
 
-        timerInterval = setInterval(function() {
-            totalSecondsElapsed++;
-            
-            let currentMinutesElapsed = Math.floor(totalSecondsElapsed / 60);
-            document.getElementById('elapsed-time').innerText = currentMinutesElapsed;
+    function restoreUIState() {
+        isRunning = true;
+        const btnStart = document.getElementById('start-btn');
+        const btnSend = document.getElementById('send-btn');
+        
+        btnStart.innerText = "⏹ หยุดเดินเตา";
+        btnStart.style.backgroundColor = "#d9534f";
+        
+        document.getElementById('plastic-type').disabled = true;
+        document.getElementById('temp-range').disabled = true;
+        
+        btnSend.disabled = false;
+        btnSend.style.opacity = "1";
+    }
 
-            if (secondsLeft > 0) {
-                secondsLeft--;
-                updateTimerDisplay();
-            } else {
-                // ครบ 10 นาที ➔ เปิดเสียงเตือนดังต่อเนื่อง
+    function runTimerLoop() {
+        if (timerInterval) clearInterval(timerInterval);
+
+        timerInterval = setInterval(() => {
+            const startTime = parseInt(localStorage.getItem('oven_start_time') || Date.now());
+            const now = Date.now();
+            const totalSecondsElapsed = Math.floor((now - startTime) / 1000);
+
+            // อัปเดตเวลาที่ผ่านไป (นาที)
+            const minutesElapsed = Math.floor(totalSecondsElapsed / 60);
+            document.getElementById('elapsed-time').innerText = minutesElapsed;
+
+            // คำนวณเวลานับถอยหลังรอบละ 10 นาที (600 วินาที)
+            const secondsInCurrentCycle = totalSecondsElapsed % 600;
+            const secondsLeft = 600 - secondsInCurrentCycle;
+
+            updateTimerDisplay(secondsLeft);
+
+            // หากวนมาชนรอบ 10 นาทีพอดี (เหลือ 600 เท่ากับเริ่มรอบใหม่)
+            if (secondsInCurrentCycle === 0 && totalSecondsElapsed > 0) {
                 startContinuousAlarm();
-                
-                // Alert จะหยุดการทำงานของโค้ดไว้ จนกว่าผู้ใช้จะกด "ตกลง"
-                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบัน แล้วกดบันทึก");
-                
-                // พอกด "ตกลง" ปุ๊บ ให้หยุดเสียงเตือนทันที
+                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก");
                 stopContinuousAlarm();
-                
-                secondsLeft = 600; // รีเซ็ตนับถอยหลังรอบใหม่
             }
         }, 1000);
     }
 
-    function updateTimerDisplay() {
-        let m = Math.floor(secondsLeft / 60);
-        let s = secondsLeft % 60;
+    function updateTimerDisplay(sec) {
+        let m = Math.floor(sec / 60);
+        let s = sec % 60;
         let mStr = m < 10 ? "0" + m : m;
         let sStr = s < 10 ? "0" + s : s;
         document.getElementById('timer').innerText = mStr + ":" + sStr;
+    }
+
+    function clearOvenState() {
+        isRunning = false;
+        clearInterval(timerInterval);
+        stopContinuousAlarm();
+
+        localStorage.removeItem('oven_start_time');
+        localStorage.removeItem('plastic_type');
+        localStorage.removeItem('temp_range');
+        localStorage.removeItem('is_running');
+
+        const btnStart = document.getElementById('start-btn');
+        const btnSend = document.getElementById('send-btn');
+        const status = document.getElementById('status-text');
+
+        btnStart.innerText = "▶ เริ่มเดินเตาเผา";
+        btnStart.style.backgroundColor = "#5cb85c";
+        
+        document.getElementById('plastic-type').disabled = false;
+        document.getElementById('temp-range').disabled = false;
+        btnSend.disabled = true;
+        btnSend.style.opacity = "0.4";
+        
+        document.getElementById('timer').innerText = "10:00";
+        document.getElementById('elapsed-time').innerText = "0";
+        status.innerText = "หยุดการทำงานเตาเผาเรียบร้อยแล้ว";
+        status.style.color = "black";
     }
 
     function sendData() {
@@ -213,6 +224,9 @@
         const rangeVal = document.getElementById('temp-range').value;
         const tempVal = document.getElementById('temp-input').value;
         const status = document.getElementById('status-text');
+
+        const startTime = parseInt(localStorage.getItem('oven_start_time') || Date.now());
+        const totalSecondsElapsed = Math.floor((Date.now() - startTime) / 1000);
         const currentMinutesElapsed = Math.floor(totalSecondsElapsed / 60);
 
         if (!tempVal) {
@@ -220,9 +234,7 @@
             return;
         }
 
-        // หากยังมีเสียงเตือนค้างอยู่ ให้ปิดเสียงเมื่อกดบันทึก
         stopContinuousAlarm();
-
         status.innerText = "กำลังส่งข้อมูล...";
         status.style.color = "orange";
 

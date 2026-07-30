@@ -9,7 +9,7 @@
         .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
         h2 { margin-top: 0; color: #333; }
         .timer-box { font-size: 40px; font-weight: bold; color: #d9534f; margin: 10px 0; }
-        input { font-size: 18px; width: 85%; padding: 10px; text-align: center; margin-bottom: 12px; border: 2px solid #ccc; border-radius: 8px; }
+        input, select { font-size: 18px; width: 85%; padding: 10px; text-align: center; margin-bottom: 12px; border: 2px solid #ccc; border-radius: 8px; background-color: #fff; }
         label { font-size: 14px; color: #555; display: block; text-align: left; margin-left: 7.5%; margin-bottom: 3px; font-weight: bold; }
         button { font-size: 18px; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         .btn-start { background-color: #5cb85c; color: white; width: 90%; margin-bottom: 10px; }
@@ -28,43 +28,80 @@
     <label for="plastic-type">ชนิดพลาสติก:</label>
     <input type="text" id="plastic-type" placeholder="เช่น PP, PE, PET">
 
-    <label for="temp-input">อุณหภูมิ (°C):</label>
+    <label for="temp-range">ย่านอุณหภูมิที่ทดสอบ:</label>
+    <select id="temp-range">
+        <option value="">-- เลือกย่านอุณหภูมิ --</option>
+        <option value="200-300">200 - 300 °C</option>
+        <option value="300-400">300 - 400 °C</option>
+        <option value="400-500">400 - 500 °C</option>
+        <option value="500-600">500 - 600 °C</option>
+        <option value="600-700">600 - 700 °C</option>
+    </select>
+
+    <label for="temp-input">อุณหภูมิปัจจุบัน (°C):</label>
     <input type="number" id="temp-input" placeholder="ใส่ อุณหภูมิ (°C)">
     
     <button class="btn-start" id="start-btn" onclick="toggleOven()">▶ เริ่มเดินเตาเผา</button>
     <br><br>
     <button class="btn-send" id="send-btn" onclick="sendData()" disabled style="opacity: 0.4;">บันทึกข้อมูล (ENTER)</button>
     
-    <div class="status" id="status-text">กรอกชนิดพลาสติกและอุณหภูมิ แล้วกด "เริ่มเดินเตาเผา"</div>
+    <div class="status" id="status-text">กรอกข้อมูลให้ครบ แล้วกด "เริ่มเดินเตาเผา"</div>
 </div>
 
 <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
 
 <script>
     // * นำ URL Google Apps Script ของคุณมาวางตรงนี้ *
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbypDZIBZAgicgApsJx2wufBr0ZgbzvzmZ1Uq-ZNDNIomioJekWGG7J62An8cCkPX5SXYw/exec"; 
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxzjfbvnMbQatpOBtRURtc-Ety6SCBO29-GL4iqb-sxDAvNm1EykMi-bM1U-0GTjLMgcQ/exec"; 
 
     let timerInterval = null;
     let secondsLeft = 600; // 10 นาที
     let totalSecondsElapsed = 0;
     let isRunning = false;
 
+    // ระบบสร้างเสียงเตือน (Beep Sound) ผ่าน Web Audio API
+    function playBeepSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime); // ความถี่เสียง 880Hz (เสียงปี๊บสูง)
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + 1.5); // ดังยาว 1.5 วินาที
+        } catch(e) {
+            console.log("Audio not supported");
+        }
+    }
+
     function toggleOven() {
         const plasticInput = document.getElementById('plastic-type');
+        const rangeSelect = document.getElementById('temp-range');
         const tempInput = document.getElementById('temp-input');
         const btnStart = document.getElementById('start-btn');
         const btnSend = document.getElementById('send-btn');
         const status = document.getElementById('status-text');
 
         if (!isRunning) {
-            // ตรวจสอบข้อมูลก่อนเริ่มเดินเตา
+            // เช็กการกรอกข้อมูล
             if (!plasticInput.value.trim()) {
-                alert("กรุณากรอกชนิดพลาสติกก่อนเริ่มเดินเตาครับ");
+                alert("กรุณากรอกชนิดพลาสติกก่อนครับ");
                 plasticInput.focus();
                 return;
             }
+            if (!rangeSelect.value) {
+                alert("กรุณาเลือกย่านอุณหภูมิก่อนครับ");
+                rangeSelect.focus();
+                return;
+            }
             if (!tempInput.value) {
-                alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนเริ่มเดินเตาครับ");
+                alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนครับ");
                 tempInput.focus();
                 return;
             }
@@ -74,14 +111,14 @@
             btnStart.innerText = "⏹ หยุดเดินเตา";
             btnStart.style.backgroundColor = "#d9534f";
             
-            // ล็อกช่องพลาสติกไม่ให้แก้ไขระหว่างเดินเตา
+            // ล็อกตัวเลือกไม่ให้แก้ขณะเดินเตา
             plasticInput.disabled = true;
+            rangeSelect.disabled = true;
             
-            // เปิดให้กดบันทึกได้
             btnSend.disabled = false;
             btnSend.style.opacity = "1";
 
-            // บันทึกข้อมูลนาทีที่ 0 ทันที
+            // บันทึกค่านาทีที่ 0 ทันที
             sendData();
 
             startTimer();
@@ -93,6 +130,7 @@
             btnStart.style.backgroundColor = "#5cb85c";
             
             plasticInput.disabled = false;
+            rangeSelect.disabled = false;
             btnSend.disabled = true;
             btnSend.style.opacity = "0.4";
             
@@ -107,15 +145,17 @@
         timerInterval = setInterval(function() {
             totalSecondsElapsed++;
             
-            // อัปเดตเวลาที่ผ่านไปเป็นนาที
             let currentMinutesElapsed = Math.floor(totalSecondsElapsed / 60);
             document.getElementById('elapsed-time').innerText = currentMinutesElapsed;
 
-            // ตัวนับถอยหลังรอบละ 10 นาที
             if (secondsLeft > 0) {
                 secondsLeft--;
                 updateTimerDisplay();
             } else {
+                // ครบ 10 นาที
+                playBeepSound(); // ส่งเสียงเตือน
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500]); // สั่นเครื่อง Zebra
+                
                 alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก");
                 secondsLeft = 600; // รีเซ็ตรอบใหม่
             }
@@ -132,6 +172,7 @@
 
     function sendData() {
         const plasticVal = document.getElementById('plastic-type').value.trim();
+        const rangeVal = document.getElementById('temp-range').value;
         const tempVal = document.getElementById('temp-input').value;
         const status = document.getElementById('status-text');
         const currentMinutesElapsed = Math.floor(totalSecondsElapsed / 60);
@@ -154,6 +195,7 @@
         inputData.name = 'postData';
         inputData.value = JSON.stringify({
             plastic_type: plasticVal,
+            temp_range: rangeVal,
             time_minute: currentMinutesElapsed,
             temperature: tempVal
         });
@@ -164,13 +206,12 @@
         document.body.removeChild(form);
 
         setTimeout(function() {
-            status.innerText = "บันทึก [" + plasticVal + "] " + tempVal + " °C (นาทีที่ " + currentMinutesElapsed + ") สำเร็จ!";
+            status.innerText = "บันทึก [" + plasticVal + " | ย่าน " + rangeVal + "] " + tempVal + " °C สำเร็จ!";
             status.style.color = "green";
-            document.getElementById('temp-input').value = ''; // เคลียร์เฉพาะช่องอุณหภูมิ
+            document.getElementById('temp-input').value = '';
         }, 1000);
     }
 
-    // กด Enter บน Zebra เพื่อบันทึกข้อมูล
     document.getElementById('temp-input').addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             sendData();
@@ -180,4 +221,6 @@
 
 </body>
 </html>
-
+ส่งแล้ว
+เขียนข้อความ
+เขียนถึง Sarinya Changnam

@@ -6,14 +6,15 @@
     <title>บันทึกอุณหภูมิเตาเผา</title>
     <style>
         body { font-family: sans-serif; padding: 15px; text-align: center; background-color: #f4f4f9; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
         h2 { margin-top: 0; color: #333; }
-        .timer-box { font-size: 40px; font-weight: bold; color: #d9534f; margin: 15px 0; }
-        input[type="number"] { font-size: 24px; width: 80%; padding: 10px; text-align: center; margin-bottom: 15px; border: 2px solid #ccc; border-radius: 8px; }
+        .timer-box { font-size: 40px; font-weight: bold; color: #d9534f; margin: 10px 0; }
+        input { font-size: 18px; width: 85%; padding: 10px; text-align: center; margin-bottom: 12px; border: 2px solid #ccc; border-radius: 8px; }
+        label { font-size: 14px; color: #555; display: block; text-align: left; margin-left: 7.5%; margin-bottom: 3px; font-weight: bold; }
         button { font-size: 18px; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .btn-start { background-color: #5cb85c; color: white; width: 100%; margin-bottom: 10px; }
-        .btn-send { background-color: #0275d8; color: white; width: 100%; }
-        .status { margin-top: 15px; font-weight: bold; }
+        .btn-start { background-color: #5cb85c; color: white; width: 90%; margin-bottom: 10px; }
+        .btn-send { background-color: #0275d8; color: white; width: 90%; }
+        .status { margin-top: 15px; font-weight: bold; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -24,63 +25,99 @@
     
     <div class="timer-box" id="timer">10:00</div>
     
+    <label for="plastic-type">ชนิดพลาสติก:</label>
+    <input type="text" id="plastic-type" placeholder="เช่น PP, PE, PET">
+
+    <label for="temp-input">อุณหภูมิ (°C):</label>
     <input type="number" id="temp-input" placeholder="ใส่ อุณหภูมิ (°C)">
-    <br>
-    <button class="btn-send" onclick="sendData()">บันทึกข้อมูล (ENTER)</button>
-    <br><br>
-    <button class="btn-start" id="start-btn" onclick="toggleOven()">▶ เริ่มเดินเตาเผา</button>
     
-    <div class="status" id="status-text"></div>
+    <button class="btn-start" id="start-btn" onclick="toggleOven()">▶ เริ่มเดินเตาเผา</button>
+    <br><br>
+    <button class="btn-send" id="send-btn" onclick="sendData()" disabled style="opacity: 0.4;">บันทึกข้อมูล (ENTER)</button>
+    
+    <div class="status" id="status-text">กรอกชนิดพลาสติกและอุณหภูมิ แล้วกด "เริ่มเดินเตาเผา"</div>
 </div>
 
 <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
 
 <script>
-    // * นำ URL Google Apps Script ของคุณมาวางในอัญประกาศนี้ *
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbynZ7OBrhSMvTRmI4nxVvLVs1SbUqLiI7uOIRZAo9S3_4AIixvib4Z0bLBOPXF4qVs4Tw/exec"; 
+    // * นำ URL Google Apps Script ของคุณมาวางตรงนี้ *
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbypDZIBZAgicgApsJx2wufBr0ZgbzvzmZ1Uq-ZNDNIomioJekWGG7J62An8cCkPX5SXYw/exec"; 
 
     let timerInterval = null;
     let secondsLeft = 600; // 10 นาที
-    let currentMinute = 0;
+    let totalSecondsElapsed = 0;
     let isRunning = false;
 
     function toggleOven() {
-        const btn = document.getElementById('start-btn');
+        const plasticInput = document.getElementById('plastic-type');
+        const tempInput = document.getElementById('temp-input');
+        const btnStart = document.getElementById('start-btn');
+        const btnSend = document.getElementById('send-btn');
         const status = document.getElementById('status-text');
 
         if (!isRunning) {
+            // ตรวจสอบข้อมูลก่อนเริ่มเดินเตา
+            if (!plasticInput.value.trim()) {
+                alert("กรุณากรอกชนิดพลาสติกก่อนเริ่มเดินเตาครับ");
+                plasticInput.focus();
+                return;
+            }
+            if (!tempInput.value) {
+                alert("กรุณากรอกอุณหภูมิเริ่มต้นก่อนเริ่มเดินเตาครับ");
+                tempInput.focus();
+                return;
+            }
+
+            // เริ่มเดินเตา
             isRunning = true;
-            btn.innerText = "⏹ หยุดเดินเตา";
-            btn.style.backgroundColor = "#d9534f";
-            status.innerText = "เริ่มบันทึกเวลาเตาเผาแล้ว...";
-            status.style.color = "blue";
+            btnStart.innerText = "⏹ หยุดเดินเตา";
+            btnStart.style.backgroundColor = "#d9534f";
             
+            // ล็อกช่องพลาสติกไม่ให้แก้ไขระหว่างเดินเตา
+            plasticInput.disabled = true;
+            
+            // เปิดให้กดบันทึกได้
+            btnSend.disabled = false;
+            btnSend.style.opacity = "1";
+
+            // บันทึกข้อมูลนาทีที่ 0 ทันที
+            sendData();
+
             startTimer();
         } else {
+            // หยุดเดินเตา
             isRunning = false;
             clearInterval(timerInterval);
-            btn.innerText = "▶ เริ่มเดินเตาเผา";
-            btn.style.backgroundColor = "#5cb85c";
-            status.innerText = "หยุดการทำงานเตาเผา";
+            btnStart.innerText = "▶ เริ่มเดินเตาเผา";
+            btnStart.style.backgroundColor = "#5cb85c";
+            
+            plasticInput.disabled = false;
+            btnSend.disabled = true;
+            btnSend.style.opacity = "0.4";
+            
+            status.innerText = "หยุดการทำงานเตาเผาแล้ว";
             status.style.color = "black";
         }
     }
 
     function startTimer() {
         clearInterval(timerInterval);
-        secondsLeft = 600;
-        updateTimerDisplay();
 
         timerInterval = setInterval(function() {
+            totalSecondsElapsed++;
+            
+            // อัปเดตเวลาที่ผ่านไปเป็นนาที
+            let currentMinutesElapsed = Math.floor(totalSecondsElapsed / 60);
+            document.getElementById('elapsed-time').innerText = currentMinutesElapsed;
+
+            // ตัวนับถอยหลังรอบละ 10 นาที
             if (secondsLeft > 0) {
                 secondsLeft--;
                 updateTimerDisplay();
             } else {
-                currentMinute += 10;
-                document.getElementById('elapsed-time').innerText = currentMinute;
-                
-                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิ");
-                secondsLeft = 600;
+                alert("⏰ ครบ 10 นาทีแล้ว! กรุณากรอกอุณหภูมิปัจจุบันแล้วกดบันทึก");
+                secondsLeft = 600; // รีเซ็ตรอบใหม่
             }
         }, 1000);
     }
@@ -94,18 +131,19 @@
     }
 
     function sendData() {
+        const plasticVal = document.getElementById('plastic-type').value.trim();
         const tempVal = document.getElementById('temp-input').value;
         const status = document.getElementById('status-text');
+        const currentMinutesElapsed = Math.floor(totalSecondsElapsed / 60);
 
         if (!tempVal) {
-            alert("กรุณากรอกอุณหภูมิก่อนครับ");
+            alert("กรุณากรอกอุณหภูมิก่อนบันทึกครับ");
             return;
         }
 
         status.innerText = "กำลังส่งข้อมูล...";
         status.style.color = "orange";
 
-        // ส่งแบบ Form Post เข้า iframe เพื่อหลบปัญหาการบล็อก
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = WEB_APP_URL;
@@ -115,7 +153,8 @@
         inputData.type = 'hidden';
         inputData.name = 'postData';
         inputData.value = JSON.stringify({
-            time_minute: currentMinute,
+            plastic_type: plasticVal,
+            time_minute: currentMinutesElapsed,
             temperature: tempVal
         });
 
@@ -125,13 +164,13 @@
         document.body.removeChild(form);
 
         setTimeout(function() {
-            status.innerText = "บันทึก " + tempVal + " °C สำเร็จ!";
+            status.innerText = "บันทึก [" + plasticVal + "] " + tempVal + " °C (นาทีที่ " + currentMinutesElapsed + ") สำเร็จ!";
             status.style.color = "green";
-            document.getElementById('temp-input').value = '';
+            document.getElementById('temp-input').value = ''; // เคลียร์เฉพาะช่องอุณหภูมิ
         }, 1000);
     }
 
-    // กด Enter บน Zebra เพื่อส่งค่า
+    // กด Enter บน Zebra เพื่อบันทึกข้อมูล
     document.getElementById('temp-input').addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             sendData();
